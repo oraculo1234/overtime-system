@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Panel - Horas Extra</title>
+  <style>
+    body{font-family:system-ui,Arial;margin:24px}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+    .row{display:flex;gap:10px;margin:12px 0;flex-wrap:wrap}
+    table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #ddd;padding:8px;text-align:left}
+    .admin{background:#eef7ff;padding:10px;border-radius:10px;margin-top:20px}
+    button{padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
+  </style>
+</head>
+<body>
+  <header>
+    <h2>Horas Extra</h2>
+    <div>
+      <span id="welcome"></span>
+      <button onclick="logout()">Salir</button>
+    </div>
+  </header>
+
+  <section>
+    <div class="row">
+      <button onclick="clockIn()">Marcar entrada</button>
+      <button onclick="clockOut()">Marcar salida</button>
+      <input id="from" type="date"/>
+      <input id="to" type="date"/>
+      <button onclick="loadMyShifts()">Buscar</button>
+    </div>
+    <table id="tbl">
+      <thead><tr><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas reg.</th><th>Extra</th><th>Notas</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section id="adminBox" class="admin" style="display:none">
+    <h3>Admin</h3>
+    <div class="row">
+      <input id="newName" placeholder="Nombre"/>
+      <input id="newEmail" type="email" placeholder="Correo"/>
+      <input id="newPass" type="password" placeholder="Contraseña"/>
+      <select id="newRole"><option>user</option><option>admin</option></select>
+      <button onclick="createUser()">Crear usuario</button>
+    </div>
+
+    <div class="row">
+      <input id="resetId" type="number" placeholder="User ID"/>
+      <input id="resetPassInput" type="password" placeholder="Nueva contraseña"/>
+      <button onclick="resetPassword()">Reset pass</button>
+    </div>
+
+    <button onclick="listUsers()">Actualizar lista</button>
+    <table id="usersTbl">
+      <thead><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Activo</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem('user')||'null');
+    if(!user) location.href = '/';
+    welcome.textContent = `Hola, ${user.name} (${user.role})`;
+    if(user.role === 'admin') adminBox.style.display = 'block';
+
+    async function logout(){
+      await fetch('/api/auth/logout',{method:'POST'});
+      localStorage.removeItem('user'); location.href='/';
+    }
+    async function clockIn(){
+      const r = await fetch('/api/shifts/clock-in',{method:'POST'});
+      const d = await r.json(); alert(r.ok ? 'Entrada registrada' : (d.error||'Error'));
+      loadMyShifts();
+    }
+    async function clockOut(){
+      const r = await fetch('/api/shifts/clock-out',{method:'POST'});
+      const d = await r.json(); alert(r.ok ? `Salida registrada. Extra: ${d.overtime}h` : (d.error||'Error'));
+      loadMyShifts();
+    }
+    function fmtNum(n){ return (n===null||n===undefined||n==='')?'-':Number(n).toFixed(2); }
+    async function loadMyShifts(){
+      const qs = new URLSearchParams({from:from.value||'',to:to.value||''});
+      const r = await fetch('/api/shifts/my?'+qs.toString());
+      const rows = await r.json();
+      const tb = document.querySelector('#tbl tbody'); tb.innerHTML = '';
+      for(const s of rows){
+        const total = s.clock_out ? ((new Date(s.clock_out)-new Date(s.clock_in))/36e5).toFixed(2) : '-';
+        const regular = s.regular_hours!=null ? fmtNum(s.regular_hours) : total;
+        const overtime = s.overtime_hours!=null ? fmtNum(s.overtime_hours) : '-';
+        tb.insertAdjacentHTML('beforeend',
+          `<tr><td>${s.date}</td><td>${new Date(s.clock_in).toLocaleString()}</td>
+               <td>${s.clock_out?new Date(s.clock_out).toLocaleString():'-'}</td>
+               <td>${regular}</td>
+               <td>${overtime}</td>
+               <td>${s.notes??''}</td></tr>`);
+      }
+    }
+    async function createUser(){
+      const body = {name:newName.value,email:newEmail.value,password:newPass.value,role:newRole.value};
+      const r = await fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      alert(r.ok?'Creado':'Error'); listUsers();
+    }
+    async function resetPassword(){
+      const body = {userId:+resetId.value, newPassword: resetPassInput.value};
+      const r = await fetch('/api/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      alert(r.ok?'Password reseteado':'Error');
+    }
+    async function listUsers(){
+      const r = await fetch('/api/users'); const rows = await r.json();
+      const tb = document.querySelector('#usersTbl tbody'); tb.innerHTML='';
+      for(const u of rows){
+        tb.insertAdjacentHTML('beforeend', `<tr>
+          <td>${u.id}</td><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td>${u.is_active?'Sí':'No'}</td>
+        </tr>`);
+      }
+    }
+    loadMyShifts(); if(user.role==='admin') listUsers();
+  </script>
+</body>
+</html>

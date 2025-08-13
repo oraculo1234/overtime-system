@@ -1,0 +1,12 @@
+{
+  "build": {
+    "nixpacksPlan": {
+      "phases": {
+        "setup": { "nixPkgs": ["nodejs-20_x"] },
+        "install": { "cmds": ["npm ci --omit=dev"] },
+        "build": { "cmds": ["npm run init:db || true"] },
+        "start": { "cmd": "node server.js" }
+      }
+    }
+  }
+}
